@@ -51,6 +51,30 @@ const (
 	// ActorIDFileName is the file inside IdentityMountPath holding the
 	// actor's own ID, raw with no trailing newline.
 	ActorIDFileName = "actor-id"
+
+	// AtespaceFileName is the file inside IdentityMountPath holding the actor's
+	// atespace, raw with no trailing newline. Delivered alongside the actor ID
+	// because an actor name is only unique within its atespace, so an actor that
+	// calls back into the control plane about itself (e.g. self-suspend) needs
+	// both. Like the ID, it is a per-resume bind mount rather than an env var so
+	// it is not frozen into the golden snapshot's process memory.
+	AtespaceFileName = "atespace"
+
+	// actorCABundleEnv names an atelet-level env var. When set to a host path,
+	// atelet bind-mounts that file over the actor's system CA bundle
+	// (actorCABundleDest) read-only, so actors trust an operator-provided CA in
+	// addition to the image's bundled roots. Unset (the default) leaves actor
+	// trust untouched. Used by the OpenClaw egress-broker PoC so actors trust
+	// the broker's minted TLS certs; see poc/openclaw. It is a node-level
+	// bind mount (not env/valueFrom) for the same reason as the identity
+	// directory: bind mounts are re-attached per resume rather than frozen into
+	// the checkpointed process memory.
+	actorCABundleEnv = "ATE_ACTOR_CA_BUNDLE"
+
+	// actorCABundleDest is the in-actor path the CA bundle is mounted over. This
+	// is the standard Debian/distroless location that Go's crypto/x509 and most
+	// TLS stacks read on Linux.
+	actorCABundleDest = "/etc/ssl/certs/ca-certificates.crt"
 )
 
 func prepareOCIDirectory(ctx context.Context, pullCache *memorypullcache.MemoryPullCache, atespace, actorID, containerName, ref string, args []string, env []string, annotations map[string]string, netns string, identityDir string, durableDirVolumeMounts []*ateletpb.VolumeMount) error {
@@ -147,6 +171,17 @@ func buildActorOCISpec(atespace string, actorID string, args []string, env []str
 			Destination: IdentityMountPath,
 			Type:        "bind",
 			Source:      identityDir,
+			Options:     []string{"ro"},
+		})
+	}
+	// Optionally overlay an operator-provided CA bundle so actors trust an
+	// additional root (e.g. the OpenClaw egress broker's CA). Opt-in: when
+	// actorCABundleEnv is unset, actor trust is left exactly as the image ships.
+	if caBundle := os.Getenv(actorCABundleEnv); caBundle != "" {
+		mounts = append(mounts, specs.Mount{
+			Destination: actorCABundleDest,
+			Type:        "bind",
+			Source:      caBundle,
 			Options:     []string{"ro"},
 		})
 	}

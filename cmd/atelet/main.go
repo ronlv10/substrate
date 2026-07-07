@@ -650,6 +650,9 @@ func (s *AteomHerder) prepareOCIBundles(
 	if err := writeFileAtomic(filepath.Join(identityDir, ActorIDFileName), []byte(actorID), 0o644); err != nil {
 		return fmt.Errorf("while writing actor identity file: %w", err)
 	}
+	if err := writeFileAtomic(filepath.Join(identityDir, AtespaceFileName), []byte(atespace), 0o644); err != nil {
+		return fmt.Errorf("while writing actor atespace file: %w", err)
+	}
 
 	ddVolumes := make(map[string]bool)
 	// make directories for all durable-dir volumes
